@@ -1,0 +1,123 @@
+name: CybCademy CI/CD
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Real PostgreSQL service container, not SQLite - this is the direct
+    # resolution of the risk flagged explicitly in Phase 12's Test Plan:
+    # "if this configuration is skipped in favour of a faster SQLite-based
+    # CI setup, the RLS-dependent tests would silently stop being
+    # meaningful." RLS is a PostgreSQL-specific feature; testing against
+    # any other engine would make TenantIsolationTest and
+    # CrossTenantHttpAccessTest pass for the wrong reason (the feature
+    # being tested wouldn't even exist in the test environment).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cybcademy_test
+          POSTGRES_PASSWORD: testing
+          POSTGRES_DB: cybcademy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, redis, gd, zip, intl
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction
+
+      - name: Copy environment file
+        run: cp .env.example .env
+
+      - name: Configure test environment
+        run: |
+          echo "DB_CONNECTION=pgsql" >> .env
+          echo "DB_HOST=localhost" >> .env
+          echo "DB_PORT=5432" >> .env
+          echo "DB_DATABASE=cybcademy_test" >> .env
+          echo "DB_USERNAME=cybcademy_test" >> .env
+          echo "DB_PASSWORD=testing" >> .env
+          echo "REDIS_HOST=localhost" >> .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Run migrations
+        run: php artisan migrate --force
+
+      - name: Run PHPUnit test suite
+        run: php artisan test --parallel
+
+      # PSR-12 / static analysis - implements the "Follow PSR-12" coding
+      # standard stated back in the master prompt's CODING STANDARDS
+      # section, actually enforced in CI rather than left as an
+      # unenforced style preference.
+      - name: Check coding standards (PHP_CodeSniffer, PSR-12)
+        run: |
+          composer require --dev squizlabs/php_codesniffer --no-interaction
+          vendor/bin/phpcs --standard=PSR12 app/ --extensions=php
+
+      # Migrate-rollback-migrate check per Phase 9 Section 7 ("migration
+      # rollback... implemented for every migration; CI pipeline runs a
+      # migrate-then-rollback-then-migrate check to catch irreversible
+      # migrations before merge") - implemented here for the first time,
+      # closing a gap that document flagged but this is the first phase
+      # to actually build the CI pipeline it depends on.
+      - name: Verify migrations are reversible
+        run: |
+          php artisan migrate:rollback --force
+          php artisan migrate --force
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build application image
+        run: docker build -t cybcademy-app:${{ github.sha }} .
+
+      # Actual push to a container registry and deployment trigger are
+      # left as documented next steps rather than implemented here, since
+      # they depend on infrastructure specifics (registry credentials,
+      # target host access) not established anywhere in the design docs -
+      # see deploy/README.md for the manual process this would replace.
+      - name: Build complete
+        run: echo "Image built. Registry push and deployment trigger are environment-specific - see deploy/README.md."

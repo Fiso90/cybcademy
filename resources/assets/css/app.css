@@ -1,0 +1,151 @@
+/**
+ * CybCademy Design Tokens
+ *
+ * Direct implementation of the Phase 6 UI Design Guide's design system
+ * (Section 2). These CSS custom properties are the single source of truth
+ * for colour/type/spacing - Bootstrap 5 utility classes and any custom
+ * component CSS both reference these variables rather than hardcoding
+ * hex values, so a future palette adjustment happens in exactly one file.
+ *
+ * @see /mnt/user-data/outputs/CybCademy_Phase6_UIUX.md Section 2
+ */
+
+:root {
+  /* --- Colour palette (Phase 6 Section 2.1) --- */
+  --cyb-navy-900: #0E1B2E;
+  --cyb-navy-700: #1B3252;
+  --cyb-slate-100: #F4F6F9;
+  --cyb-slate-300: #D9DFE7;
+  --cyb-teal-500: #1FA6A0;
+  --cyb-amber-500: #E8A33D;
+  --cyb-red-600: #D14343;
+  --cyb-green-600: #2E9E5B;
+
+  /* Semantic aliases - components reference these, not the raw palette
+     above, so switching what "surface" or "risk-medium" MEANS in a given
+     mode only requires editing this block, not every component. */
+  --cyb-surface: var(--cyb-slate-100);
+  --cyb-surface-raised: #FFFFFF;
+  --cyb-sidebar: var(--cyb-navy-900);
+  --cyb-text: var(--cyb-navy-900);
+  --cyb-text-muted: #5A6B85;
+  --cyb-border: var(--cyb-slate-300);
+  --cyb-accent: var(--cyb-teal-500);
+  --cyb-risk-high: var(--cyb-red-600);
+  --cyb-risk-medium: var(--cyb-amber-500);
+  --cyb-risk-low: var(--cyb-green-600);
+
+  /* --- Typography (Phase 6 Section 2.2) --- */
+  --cyb-font-display: 'Inter Tight', -apple-system, sans-serif;
+  --cyb-font-body: 'Inter', -apple-system, sans-serif;
+  --cyb-font-mono: 'IBM Plex Mono', 'SFMono-Regular', monospace;
+
+  /* --- Spacing (Phase 6 Section 2.3) - 8px base grid --- */
+  --cyb-space-1: 8px;
+  --cyb-space-2: 16px;
+  --cyb-space-3: 24px;
+  --cyb-space-4: 32px;
+  --cyb-space-6: 48px;
+  --cyb-space-8: 64px;
+
+  --cyb-radius: 8px;
+  --cyb-transition: 160ms ease;
+}
+
+/* Dark Mode - first-class per Phase 6 Section 2.5, not an inverted
+   filter. Toggled by adding data-theme="dark" to <html>, set by
+   Alpine.js in layouts/app.blade.php, defaulting to system preference. */
+[data-theme='dark'] {
+  --cyb-surface: var(--cyb-navy-900);
+  --cyb-surface-raised: var(--cyb-navy-700);
+  --cyb-sidebar: #081221;
+  --cyb-text: #EDF1F7;
+  --cyb-text-muted: #9AAAC4;
+  --cyb-border: #2A3F5F;
+}
+
+body {
+  font-family: var(--cyb-font-body);
+  background-color: var(--cyb-surface);
+  color: var(--cyb-text);
+  font-size: 16px; /* never smaller for body text, per Phase 6 Section 2.2 WCAG note */
+  transition: background-color var(--cyb-transition), color var(--cyb-transition);
+}
+
+h1, h2, h3, h4, .cyb-display {
+  font-family: var(--cyb-font-display);
+  font-weight: 600;
+}
+
+.cyb-mono {
+  font-family: var(--cyb-font-mono);
+}
+
+/* --- Accessibility baseline (Phase 6 Section 8) --- */
+
+/* Visible focus states, never suppressed without replacement */
+:focus-visible {
+  outline: 2px solid var(--cyb-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --- Layout primitives --- */
+
+.cyb-sidebar {
+  background-color: var(--cyb-sidebar);
+  color: #EDF1F7;
+  min-height: 100vh;
+  width: 240px;
+  transition: width var(--cyb-transition);
+}
+
+.cyb-sidebar.collapsed {
+  width: 72px;
+}
+
+.cyb-sidebar a.nav-link {
+  color: #C3CEDF;
+  border-radius: var(--cyb-radius);
+  padding: var(--cyb-space-1) var(--cyb-space-2);
+  margin-bottom: 4px;
+  transition: background-color var(--cyb-transition), color var(--cyb-transition);
+}
+
+.cyb-sidebar a.nav-link.active,
+.cyb-sidebar a.nav-link:hover {
+  background-color: rgba(31, 166, 160, 0.15);
+  color: #FFFFFF;
+}
+
+.cyb-card {
+  background-color: var(--cyb-surface-raised);
+  border: 1px solid var(--cyb-border);
+  border-radius: var(--cyb-radius);
+  padding: var(--cyb-space-3);
+}
+
+/* Risk-tier badges - colour is never the sole indicator (Phase 6 Section
+   8): every badge pairs colour with a text label, enforced by the
+   risk-badge component always rendering its label prop, never an
+   unlabelled coloured dot. */
+.cyb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cyb-badge--low { background: color-mix(in srgb, var(--cyb-risk-low) 15%, transparent); color: var(--cyb-risk-low); }
+.cyb-badge--medium { background: color-mix(in srgb, var(--cyb-risk-medium) 15%, transparent); color: var(--cyb-risk-medium); }
+.cyb-badge--high { background: color-mix(in srgb, var(--cyb-risk-high) 15%, transparent); color: var(--cyb-risk-high); }

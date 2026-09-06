@@ -1,0 +1,123 @@
+# CybCademy — Docker Compose (application tier)
+#
+# PostgreSQL is deliberately NOT a service in this file. Phase 4 Section
+# 11's architecture explicitly recommends "a managed Postgres service or
+# a dedicated, carefully-backed-up host rather than co-locating the
+# primary data store in the same Compose stack as the app tier" - so
+# production points DB_HOST at an external managed instance via
+# environment variables, not a `postgres:` service here. A local
+# `docker-compose.override.yml` (gitignored) can add one for pure local
+# development if desired, but it is intentionally absent from this base
+# file to avoid the anti-pattern taking root as the "normal" way to run
+# this stack.
+#
+# Three separate queue worker services, not one - matching the isolated-
+# queue decisions made in Epics E4 (phishing-sends) and E7 (audit
+# exports), so a backlog in one never delays the other, and so each can
+# be scaled (replica count) independently in production orchestration.
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./public:/var/www/html/public:ro
+    depends_on:
+      - app
+    networks:
+      - cybcademy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - redis
+    networks:
+      - cybcademy
+
+  queue-default:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: php artisan queue:work --queue=default --tries=3 --timeout=90
+    env_file: .env
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - redis
+    networks:
+      - cybcademy
+    restart: unless-stopped
+
+  queue-phishing-sends:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Isolated queue from Epic E4's PhishingCampaignService::launch() -
+    # a phishing send backlog must never delay audit exports or general
+    # notifications, and vice versa (Phase 7 Section 10 rate-limiting
+    # risk mitigation).
+    command: php artisan queue:work --queue=phishing-sends --tries=3 --timeout=60
+    env_file: .env
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - redis
+    networks:
+      - cybcademy
+    restart: unless-stopped
+
+  queue-audit-exports:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Isolated queue from Epic E7's GenerateAuditExportPackage, which has
+    # a hard 300s job timeout matching the FR-8.2 SLA - this worker
+    # should never be waiting behind a large phishing campaign send.
+    command: php artisan queue:work --queue=audit-exports --tries=2 --timeout=300
+    env_file: .env
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - redis
+    networks:
+      - cybcademy
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Runs Laravel's scheduler loop, which dispatches
+    # RecalculateHumanRiskScores (Epic E6) and the policy-reminder job
+    # (Epic E10) on their configured cadence - the "Phase 13 wiring" both
+    # of those epics' READMEs deferred to this phase.
+    command: sh -c "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    env_file: .env
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - redis
+    networks:
+      - cybcademy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    networks:
+      - cybcademy
+
+networks:
+  cybcademy:
+    driver: bridge
+
+volumes:
+  redis-data:
